@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monthly Technician Report Generator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .upload-container {
+            background: white;
+            padding: 50px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .upload-container.processing {
+            display: none;
+        }
+        
+        h1 {
+            color: #2c5f2d;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 40px;
+            font-size: 16px;
+        }
+        
+        .upload-area {
+            border: 3px dashed #2c5f2d;
+            border-radius: 15px;
+            padding: 60px 40px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f8f9fa;
+        }
+        
+        .upload-area:hover {
+            border-color: #1e4620;
+            background: #e8f5e9;
+            transform: translateY(-2px);
+        }
+        
+        .upload-area.dragging {
+            border-color: #1e4620;
+            background: #d4f1d7;
+            transform: scale(1.02);
+        }
+        
+        .upload-icon {
+            font-size: 64px;
+            color: #2c5f2d;
+            margin-bottom: 20px;
+        }
+        
+        .upload-text {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .upload-hint {
+            font-size: 14px;
+            color: #999;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .processing-container {
+            display: none;
+            text-align: center;
+        }
+        
+        .processing-container.active {
+            display: block;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2c5f2d;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .status-text {
+            color: #666;
+            font-size: 16px;
+            margin-top: 20px;
+        }
+        
+        .error {
+            color: #d32f2f;
+            padding: 20px;
+            background: #ffebee;
+            border-radius: 10px;
+            margin-top: 20px;
+            font-weight: 500;
+        }
+        
+        .report-container {
+            display: none;
+            background: white;
+            padding: 20px;
+            margin: 0 auto;
+            max-width: 1400px;
+        }
+        
+        .report-container.active {
+            display: block;
+        }
+        
+        .print-btn {
+            background: linear-gradient(135deg, #2c5f2d 0%, #3d7a3e 100%);
+            color: white;
+            border: none;
+            padding: 14px 40px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(44, 95, 45, 0.3);
+            transition: all 0.3s;
+            margin: 20px auto;
+            display: block;
+        }
+        
+        .print-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(44, 95, 45, 0.4);
+        }
+        
+        .back-btn {
+            background: #666;
+            color: white;
+            border: none;
+            padding: 10px 30px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 6px;
+            margin-right: 15px;
+        }
+        
+        .back-btn:hover {
+            background: #555;
+        }
+        
+        @media print {
+            .upload-container, .processing-container, .print-btn, .back-btn {
+                display: none !important;
+            }
+            
+            .report-container {
+                display: block !important;
+            }
+            
+            body {
+                background: white;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="upload-container" id="uploadContainer">
+        <h1>🔧 Technician Report Generator</h1>
+        <p class="subtitle">O'Brien County Implement</p>
+        
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📊</div>
+            <div class="upload-text">Drop your Excel file here</div>
+            <div class="upload-hint">or click to browse</div>
+        </div>
+        
+        <input type="file" id="fileInput" accept=".xlsx,.xls">
+        
+        <div id="errorMsg"></div>
+    </div>
+    
+    <div class="processing-container" id="processingContainer">
+        <div class="spinner"></div>
+        <div class="status-text">Processing your data...</div>
+        <div class="status-text" id="statusDetail">Reading file...</div>
+    </div>
+    
+    <div class="report-container" id="reportContainer">
+        <button class="back-btn" onclick="resetApp()">← Upload New File</button>
+        <button class="print-btn" onclick="window.print()">🖨️ Print Report / Save as PDF</button>
+        <div id="reportContent"></div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const uploadContainer = document.getElementById('uploadContainer');
+        const processingContainer = document.getElementById('processingContainer');
+        const reportContainer = document.getElementById('reportContainer');
+        const errorMsg = document.getElementById('errorMsg');
+        const statusDetail = document.getElementById('statusDetail');
+        
+        // Drag and drop handlers
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragging');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragging');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragging');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+        
+        function resetApp() {
+            uploadContainer.style.display = 'block';
+            processingContainer.classList.remove('active');
+            reportContainer.classList.remove('active');
+            fileInput.value = '';
+            errorMsg.innerHTML = '';
+        }
+        
+        async function handleFile(file) {
+            if (!file.name.match(/\.(xlsx|xls)$/)) {
+                showError('Please upload an Excel file (.xlsx or .xls)');
+                return;
+            }
+            
+            uploadContainer.style.display = 'none';
+            processingContainer.classList.add('active');
+            errorMsg.innerHTML = '';
+            
+            try {
+                statusDetail.textContent = 'Reading Excel file...';
+                const data = await file.arrayBuffer();
+                
+                statusDetail.textContent = 'Parsing data...';
+                const workbook = XLSX.read(data);
+                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                
+                statusDetail.textContent = 'Processing technician data...';
+                const reportData = processData(jsonData);
+                
+                statusDetail.textContent = 'Generating report...';
+                generateReport(reportData);
+                
+                processingContainer.classList.remove('active');
+                reportContainer.classList.add('active');
+            } catch (error) {
+                console.error('Error:', error);
+                processingContainer.classList.remove('active');
+                uploadContainer.style.display = 'block';
+                showError('Error processing file: ' + error.message);
+            }
+        }
+        
+        function showError(message) {
+            errorMsg.innerHTML = `<div class="error">${message}</div>`;
+        }
+        
+        function processData(allData) {
+            // Handle both column name formats: "Hrs Pstd" and " Hrs Pstd "
+            const hoursCol = Object.keys(allData[0]).find(key => key.includes('Hrs Pstd')) || 'Hrs Pstd';
+            
+            console.log('Using hours column:', JSON.stringify(hoursCol));
+            
+            function getWOCategory(wo) {
+                if (!wo) return '';
+                if (wo.startsWith('W') && wo.length > 1 && wo.charAt(1).match(/[0-9]/)) return 'W';
+                const match = wo.match(/^[A-Z0-9]+/);
+                return match ? match[0] : wo;
+            }
+            
+            function isBillable(wo, tech) {
+                if (!wo) return false;
+                if (wo.startsWith('W')) return true;
+                if (wo.startsWith('TRUK') && tech === '00015') return true;
+                return false;
+            }
+            
+            function shouldExclude(wo) {
+                if (!wo) return false;
+                return wo.startsWith('HDAY') || wo.startsWith('VC');
+            }
+            
+            // Get current month/year from most recent date
+            const dates = allData.map(r => String(r['Actual Date Opened'] || '')).filter(d => d.length === 8);
+            dates.sort();
+            const latestDate = dates[dates.length - 1];
+            const currentYear = latestDate.substring(0, 4);
+            const currentMonth = latestDate.substring(4, 6);
+            
+            // Process current month
+            const currentData = allData.filter(r => {
+                const date = String(r['Actual Date Opened'] || '');
+                const wo = r.WO || '';
+                return date.startsWith(currentYear + currentMonth) && !shouldExclude(wo);
+            });
+            
+            const septStats = {};
+            currentData.forEach(row => {
+                const tech = row.Tech;
+                const hours = parseFloat(row[hoursCol]) || 0;
+                const wo = row.WO || '';
+                const billable = isBillable(wo, tech);
+                const category = getWOCategory(wo);
+                const date = String(row['Actual Date Opened']);
+                const day = parseInt(date.substring(6, 8));
+                const week = Math.ceil(day / 7);
+                
+                if (!septStats[tech]) septStats[tech] = { t: 0, b: 0, c: {}, w: [0,0,0,0,0] };
+                
+                septStats[tech].t += hours;
+                if (billable) septStats[tech].b += hours;
+                
+                if (!septStats[tech].c[category]) septStats[tech].c[category] = { h: 0, e: 0, b: billable };
+                septStats[tech].c[category].h += hours;
+                septStats[tech].c[category].e += 1;
+                
+                if (week >= 1 && week <= 5) septStats[tech].w[week - 1] += hours;
+            });
+            
+            // Get qualifying techs
+            const qualifyingTechs = Object.keys(septStats)
+                .filter(tech => septStats[tech].t >= 80 && septStats[tech].b > 0)
+                .sort((a, b) => (septStats[b].b/septStats[b].t) - (septStats[a].b/septStats[a].t));
+            
+            const qt = qualifyingTechs.filter(t => t !== 'JES01');
+            const qtNonStd = qualifyingTechs.includes('JES01') ? ['JES01'] : [];
+            
+            // Calculate YTD and monthly
+            const ytdStats = {}, monthly2025 = {}, monthly2024 = {};
+            
+            qualifyingTechs.forEach(tech => {
+                ytdStats[tech] = { t: 0, b: 0 };
+                monthly2025[tech] = {};
+                monthly2024[tech] = {};
+                for (let m = 1; m <= 12; m++) {
+                    monthly2025[tech][m] = { t: 0, b: 0 };
+                    monthly2024[tech][m] = { t: 0, b: 0 };
+                }
+            });
+            
+            allData.forEach(row => {
+                const tech = row.Tech;
+                if (!qualifyingTechs.includes(tech)) return;
+                
+                const date = String(row['Actual Date Opened'] || '');
+                if (date.length !== 8) return;
+                
+                const wo = row.WO || '';
+                if (shouldExclude(wo)) return;
+                
+                const hours = parseFloat(row[hoursCol]) || 0;
+                const billable = isBillable(wo, tech);
+                const year = date.substring(0, 4);
+                const month = parseInt(date.substring(4, 6));
+                
+                if (year === currentYear) {
+                    ytdStats[tech].t += hours;
+                    if (billable) ytdStats[tech].b += hours;
+                    
+                    if (month >= 1 && month <= 12) {
+                        monthly2025[tech][month].t += hours;
+                        if (billable) monthly2025[tech][month].b += hours;
+                    }
+                } else if (year === String(parseInt(currentYear) - 1) && month >= 1 && month <= 12) {
+                    monthly2024[tech][month].t += hours;
+                    if (billable) monthly2024[tech][month].b += hours;
+                }
+            });
+            
+            return {
+                qt, qtNonStd, septStats, ytdStats, monthly2025, monthly2024,
+                currentYear, currentMonth
+            };
+        }
+        
+        function generateReport(data) {
+            // This will contain the complete report HTML generation
+            // Using the same structure as the current artifact
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const currentMonthName = monthNames[parseInt(data.currentMonth) - 1];
+            
+            let html = generateReportHTML(data, monthNames, currentMonthName);
+            
+            document.getElementById('reportContent').innerHTML = html;
+            
+            // Generate charts
+            [...data.qt, ...data.qtNonStd].forEach(tech => {
+                createPieChart(tech, data.septStats[tech]);
+            });
+        }
+        
+        function generateReportHTML(data, monthNames, currentMonthName) {
+            // Report HTML generation
+            return `
+                <style>
+                    .page { background: white; padding: 50px; margin: 0 auto 30px; max-width: 1400px; box-shadow: 0 8px 30px rgba(0,0,0,0.12); border-radius: 12px; page-break-after: always; }
+                    .header { text-align: center; margin-bottom: 40px; border-bottom: 4px solid #2c5f2d; padding-bottom: 25px; }
+                    .company-name { font-size: 38px; font-weight: 700; color: #2c5f2d; margin-bottom: 12px; }
+                    .report-title { font-size: 26px; color: #2d3748; margin-bottom: 8px; font-weight: 600; }
+                    .report-subtitle { font-size: 19px; color: #718096; margin-bottom: 12px; font-weight: 500; }
+                    .exclusion-note { font-size: 13px; color: #a0aec0; font-style: italic; }
+                    .summary-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 25px; margin-bottom: 40px; }
+                    .card { background: linear-gradient(135deg, #2c5f2d 0%, #3d7a3e 100%); color: white; padding: 28px; border-radius: 12px; box-shadow: 0 6px 20px rgba(44, 95, 45, 0.25); }
+                    .card-label { font-size: 13px; opacity: 0.9; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; }
+                    .card-value { font-size: 36px; font-weight: 700; letter-spacing: -1px; }
+                    .card-subvalue { font-size: 15px; opacity: 0.85; margin-top: 8px; font-weight: 500; }
+                    table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 20px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+                    th { background: #2c5f2d; color: white; padding: 16px; text-align: left; font-weight: 600; font-size: 14px; text-transform: uppercase; }
+                    td { padding: 14px 16px; border-bottom: 1px solid #e2e8f0; font-size: 15px; }
+                    tr:hover { background: #f7fafc; }
+                    .totals-row { background: #e8f5e9 !important; font-weight: 700; border-top: 2px solid #2c5f2d; }
+                    .non-standard-row { background: #fff3cd !important; font-style: italic; color: #856404; }
+                    .tech-header { background: linear-gradient(135deg, #2c5f2d 0%, #3d7a3e 100%); color: white; padding: 18px; border-radius: 10px; margin-bottom: 30px; font-size: 26px; font-weight: 700; text-align: center; box-shadow: 0 6px 20px rgba(44, 95, 45, 0.25); }
+                    .content-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-bottom: 35px; }
+                    .left-column { display: flex; flex-direction: column; gap: 25px; }
+                    .right-column { display: flex; align-items: center; justify-content: center; }
+                    .metrics-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+                    .metric-card { background: #f7fafc; padding: 22px; border-radius: 10px; text-align: center; border: 2px solid #e2e8f0; }
+                    .metric-card.highlight { background: linear-gradient(135deg, #e8f5e9 0%, #d4f1d7 100%); border: 3px solid #2c5f2d; }
+                    .metric-label { font-size: 12px; color: #718096; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; }
+                    .metric-value { font-size: 42px; font-weight: 700; color: #2d3748; letter-spacing: -1px; }
+                    .metric-card.highlight .metric-value { color: #2c5f2d; }
+                    .section-title { font-size: 22px; color: #2c5f2d; margin: 35px 0 18px; font-weight: 700; border-bottom: 3px solid #2c5f2d; padding-bottom: 10px; }
+                    .section-title.small { font-size: 16px; margin: 20px 0 12px; }
+                    .weekly-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+                    .week-card { background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%); padding: 12px; border-radius: 8px; text-align: center; border: 2px solid #e2e8f0; }
+                    .week-label { font-size: 10px; color: #718096; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+                    .week-value { font-size: 20px; font-weight: 700; color: #2c5f2d; letter-spacing: -0.5px; }
+                    .chart-container { width: 100%; max-width: 550px; height: 450px; padding: 20px; background: #f7fafc; border-radius: 12px; border: 2px solid #e2e8f0; }
+                    .category-row.billable { background: linear-gradient(90deg, #e8f5e9 0%, #f0f9f1 100%); font-weight: 700; border-left: 4px solid #2c5f2d; }
+                    .history-table th { font-size: 12px; padding: 12px 10px; }
+                    .history-table td { text-align: center; font-size: 14px; padding: 12px 10px; font-weight: 500; }
+                    .current-month { background: linear-gradient(135deg, #e8f5e9 0%, #d4f1d7 100%) !important; font-weight: 700; border: 2px solid #2c5f2d; }
+                    .ytd-column { background: linear-gradient(135deg, #2c5f2d 0%, #3d7a3e 100%) !important; color: white !important; font-weight: 700; }
+                    .prior-year-row { background: #f7fafc; }
+                    @media print {
+                        body { background: white !important; }
+                        .page { box-shadow: none; margin: 0; padding: 40px; max-width: 100%; border-radius: 0; }
+                        .content-grid { page-break-inside: avoid; }
+                        .card, .totals-row, .non-standard-row, .tech-header, .metric-card.highlight, .current-month, .ytd-column, .category-row.billable {
+                            -webkit-print-color-adjust: exact !important;
+                            print-color-adjust: exact !important;
+                            color-adjust: exact !important;
+                        }
+                    }
+                </style>
+                ${genManagerSummary(data, monthNames, currentMonthName, false)}
+                ${genManagerSummary(data, monthNames, currentMonthName, true)}
+                ${[...data.qt, ...data.qtNonStd].map(tech => genTechPage(tech, data, monthNames, currentMonthName)).join('')}
+            `;
+        }
+        
+        function genManagerSummary(data, monthNames, currentMonthName, isYTD) {
+            const stats = isYTD ? data.ytdStats : data.septStats;
+            let tt = 0, tb = 0;
+            const techs = data.qt.map(tech => {
+                const s = stats[tech];
+                tt += s.t; tb += s.b;
+                return {tech, t: s.t, b: s.b, p: (s.b/s.t*100)};
+            }).sort((a,b) => b.p - a.p);
+            
+            const nonStdTechs = data.qtNonStd.map(tech => {
+                const s = stats[tech];
+                return {tech, t: s.t, b: s.b, p: (s.b/s.t*100)};
+            });
+            
+            const avg = (tb/tt*100);
+            const rev = tb * 150;
+            
+            return `
+                <div class="page">
+                    <div class="header">
+                        <div class="company-name">O'Brien County Implement</div>
+                        <div class="report-title">${isYTD ? 'Manager\'s Summary - Year to Date' : 'Manager\'s Summary - Current Month'}</div>
+                        <div class="report-subtitle">${isYTD ? `Year to Date ${data.currentYear}` : `${currentMonthName} ${data.currentYear}`}</div>
+                        <div class="exclusion-note">Excludes Holiday (HDAY) and Vacation (VC) hours • JES01 excluded from average calculation</div>
+                    </div>
+                    <div class="summary-cards">
+                        <div class="card"><div class="card-label">Total Hours</div><div class="card-value">${tt.toFixed(2)}</div></div>
+                        <div class="card"><div class="card-label">Billable Hours</div><div class="card-value">${tb.toFixed(2)}</div></div>
+                        <div class="card"><div class="card-label">Average Billable %</div><div class="card-value">${avg.toFixed(2)}%</div></div>
+                        <div class="card"><div class="card-label">Estimated Revenue</div><div class="card-value">$${rev.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</div><div class="card-subvalue">@ $150/hr</div></div>
+                    </div>
+                    <table><thead><tr><th>Technician</th><th>Total Hours</th><th>Billable Hours</th><th>Billable %</th><th>Est. Revenue @ $150/hr</th></tr></thead>
+                    <tbody>${techs.map(t => `<tr><td>${t.tech}</td><td>${t.t.toFixed(2)}</td><td>${t.b.toFixed(2)}</td><td>${t.p.toFixed(2)}%</td><td>${(t.b*150).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</td></tr>`).join('')}
+                    <tr class="totals-row"><td><strong>TOTALS</strong></td><td>${tt.toFixed(2)}</td><td>${tb.toFixed(2)}</td><td>${avg.toFixed(2)}%</td><td>${rev.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</td></tr>
+                    ${nonStdTechs.map(t => `<tr class="non-standard-row"><td>${t.tech} (Non-Standard)</td><td>${t.t.toFixed(2)}</td><td>${t.b.toFixed(2)}</td><td>${t.p.toFixed(2)}%</td><td>${(t.b*150).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}</td></tr>`).join('')}
+                    </tbody></table>
+                </div>
+            `;
+        }
+        
+        function genTechPage(tech, data, monthNames, currentMonthName) {
+            const s = data.septStats[tech];
+            const y = data.ytdStats[tech];
+            const m25 = data.monthly2025[tech];
+            const m24 = data.monthly2024[tech];
+            const currentMonthIdx = parseInt(data.currentMonth) - 1;
+            
+            const bp = (s.b/s.t*100);
+            const nb = s.t - s.b;
+            
+            const billCats = [];
+            const nonBillCats = [];
+            
+            Object.entries(s.c).forEach(([n,d]) => {
+                const cat = {n, h: d.h, e: d.e, p: (d.h/s.t*100)};
+                if (d.b) billCats.push(cat);
+                else nonBillCats.push(cat);
+            });
+            
+            billCats.sort((a,b) => b.h - a.h);
+            nonBillCats.sort((a,b) => b.h - a.h);
+            
+            const cid = `c${tech}`;
+            
+            return `
+                <div class="page">
+                    <div class="header">
+                        <div class="company-name">O'Brien County Implement</div>
+                        <div class="report-title">Technician Efficiency Report</div>
+                        <div class="report-subtitle">${currentMonthName} ${data.currentYear}</div>
+                        <div class="exclusion-note">Excludes Holiday (HDAY) and Vacation (VC) hours</div>
+                    </div>
+                    <div class="tech-header">Technician ${tech}</div>
+                    
+                    <div class="content-grid">
+                        <div class="left-column">
+                            <div class="metrics-grid">
+                                <div class="metric-card"><div class="metric-label">Total Hours</div><div class="metric-value">${s.t.toFixed(2)}</div></div>
+                                <div class="metric-card"><div class="metric-label">Billable Hours</div><div class="metric-value">${s.b.toFixed(2)}</div></div>
+                                <div class="metric-card highlight"><div class="metric-label">Billable %</div><div class="metric-value">${bp.toFixed(2)}%</div></div>
+                                <div class="metric-card"><div class="metric-label">Non-Billable Hours</div><div class="metric-value">${nb.toFixed(2)}</div></div>
+                            </div>
+                            
+                            <div class="section-title small">Weekly Hours Breakdown</div>
+                            <div class="weekly-grid">${s.w.map((h,i) => `<div class="week-card"><div class="week-label">Week ${i+1}</div><div class="week-value">${h.toFixed(2)}</div></div>`).join('')}</div>
+                        </div>
+                        
+                        <div class="right-column">
+                            <div class="chart-container">
+                                <canvas id="${cid}"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="section-title">Category Breakdown</div>
+                    <table><thead><tr><th>Category</th><th>Hours</th><th>Percentage</th><th>Entries</th></tr></thead>
+                    <tbody>
+                    ${billCats.map(c => `<tr class="category-row billable"><td>${c.n} (Billable)</td><td>${c.h.toFixed(2)}</td><td>${c.p.toFixed(2)}%</td><td>${c.e}</td></tr>`).join('')}
+                    ${nonBillCats.map(c => `<tr class="category-row"><td>${c.n}</td><td>${c.h.toFixed(2)}</td><td>${c.p.toFixed(2)}%</td><td>${c.e}</td></tr>`).join('')}
+                    </tbody></table>
+                    
+                    <div class="section-title">Historical Billable Percentage by Month</div>
+                    <table class="history-table"><thead><tr><th>Year</th>${monthNames.map(m => `<th>${m}</th>`).join('')}<th class="ytd-column">YTD Avg</th></tr></thead>
+                    <tbody><tr><td><strong>${data.currentYear}</strong></td>${monthNames.map((m,i) => {
+                        const d = m25[i+1];
+                        const pct = d.t > 0 ? (d.b/d.t*100).toFixed(2) : '0.00';
+                        return `<td class="${i===currentMonthIdx?'current-month':''}">${pct}%</td>`;
+                    }).join('')}<td class="ytd-column">${(y.b/y.t*100).toFixed(2)}%</td></tr>
+                    <tr class="prior-year-row"><td><strong>${parseInt(data.currentYear)-1}</strong></td>${monthNames.map((m,i) => {
+                        const d = m24[i+1];
+                        const pct = d.t > 0 ? (d.b/d.t*100).toFixed(2) : '-';
+                        return `<td>${typeof pct === 'number' ? pct + '%' : pct}</td>`;
+                    }).join('')}<td class="ytd-column">${(() => {
+                        let t=0,b=0; 
+                        for(let m=1; m<=12; m++){t+=m24[m].t; b+=m24[m].b;}
+                        return t>0 ? (b/t*100).toFixed(2)+'%' : '-';
+                    })()}</td></tr></tbody></table>
+                </div>
+            `;
+        }
+        
+        function createPieChart(tech, stats) {
+            const billCats = [];
+            const nonBillCats = [];
+            
+            Object.entries(stats.c).forEach(([n,d]) => {
+                if (d.b) billCats.push({n,h:d.h});
+                else nonBillCats.push({n,h:d.h});
+            });
+            
+            const cd = [
+                ...billCats.map(c => ({l:`${c.n} (Billable)`,h:c.h,c:'#2c5f2d'})),
+                ...nonBillCats.map((c,i)=>({l:c.n,h:c.h,c:['#FF6384','#36A2EB','#FFCE56','#4BC0C0','#9966FF','#FF9F40'][i%6]}))
+            ];
+            
+            const ctx = document.getElementById(`c${tech}`);
+            if(ctx) {
+                new Chart(ctx,{
+                    type:'pie',
+                    data:{
+                        labels:cd.map(d=>d.l),
+                        datasets:[{
+                            data:cd.map(d=>d.h),
+                            backgroundColor:cd.map(d=>d.c)
+                        }]
+                    },
+                    options:{
+                        responsive:true,
+                        maintainAspectRatio:true,
+                        plugins:{
+                            legend:{
+                                position:'bottom',
+                                labels:{
+                                    font:{size:13,weight:'600'},
+                                    padding:15
+                                }
+                            },
+                            tooltip:{
+                                callbacks:{
+                                    label:function(c){
+                                        const h=c.parsed;
+                                        const t=c.dataset.data.reduce((a,b)=>a+b,0);
+                                        return `${c.label}: ${h.toFixed(2)} hrs (${(h/t*100).toFixed(2)}%)`;
+                                    }
+                                },
+                                titleFont:{size:14,weight:'bold'},
+                                bodyFont:{size:13},
+                                padding:12
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    </script>
+</body>
+</html>
